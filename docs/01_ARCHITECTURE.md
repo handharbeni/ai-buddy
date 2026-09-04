@@ -14,23 +14,39 @@
 │  (Client)   │     │  Frontend   │     │  Gateway    │
 └─────────────┘     └─────────────┘     └──────┬──────┘
                                                 │
-                    ┌───────────────────────────┼───────────────────────────┐
-                    │                           │                           │
-                    ▼                           ▼                           ▼
-           ┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
-           │   Auth/RBAC     │         │  Qwen Local     │         │   MCP Router    │
-           │   Service       │         │  LLM (Ollama)   │         │                 │
-           └────────┬────────┘         └────────┬────────┘         └────────┬────────┘
-                    │                           │                           │
-                    │                    ┌──────┴──────┐                    │
-                    │                    │             │                    │
-                    ▼                    ▼             ▼                    ▼
-           ┌─────────────────┐  ┌───────────────┐ ┌───────────┐  ┌─────────────────┐
-           │   Oracle DB     │  │ PostgreSQL DB │ │ MySQL DB  │  │     Qdrant      │
-           │  (Tax Revenue,  │  │  (Growth      │ │ (Region   │  │  (RAG Vector    │
-           │   Arrears)      │  │   Statistics) │ │  Master)  │  │   Store)        │
-           └─────────────────┘  └───────────────┘ └───────────┘  └─────────────────┘
+                                                ▼
+                                       ┌─────────────────┐
+                                       │   Auth/RBAC     │
+                                       │   Service       │
+                                       └────────┬────────┘
+                                                │
+                                                ▼
+                                       ┌─────────────────┐
+                                       │  Qwen Local     │
+                                       │  LLM (Ollama)   │
+                                       └────────┬────────┘
+                                                │
+                                       ┌────────┴────────┐
+                                       │                 │
+                                       ▼                 ▼
+                              ┌─────────────────┐ ┌─────────────────┐
+                              │   MCP Router    │ │   RAG (Qdrant)  │
+                              │                 │ │  (Regulations)  │
+                              └────────┬────────┘ └─────────────────┘
+                                       │
+                    ┌──────────────────┼──────────────────┐
+                    │                  │                  │
+                    ▼                  ▼                  ▼
+             ┌───────────┐    ┌───────────┐    ┌─────────────┐
+             │  Oracle   │    │  MySQL    │    │ PostgreSQL  │
+             │  (Taxes,  │    │ (Regions, │    │ (Analytics, │
+             │   Arrears)│    │ Taxpayers)│    │  Statistics)│
+             └───────────┘    └───────────┘    └─────────────┘
+                    │                  │                  │
+                 [VPN A]           [VPN C]            [VPN E]
 ```
+
+**All 3 databases are peer-queryable by LLM through MCP tools.** LLM selects the right tool (which knows which DB to query) — LLM never directly queries a DB.
 
 ## Component Responsibilities
 
