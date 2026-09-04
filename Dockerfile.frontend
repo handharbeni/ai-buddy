@@ -1,0 +1,76 @@
+# syntax=docker/dockerfile:1
+# ─────────────────────────────────────────────────────────────────────────────
+# Frontend Dockerfile — Local AI Data Intelligence Platform
+# Multi-stage build for small production image.
+# Build:  docker build -f Dockerfile.frontend -t localai-frontend .
+# Run:   docker compose up frontend
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Stage 1: Dependencies ───────────────────────────────────────────────────
+FROM node:20-alpine AS deps
+
+WORKDIR /app
+
+# Install build tools for native modules
+RUN apk add --no-cache libc6-compat
+
+# Copy package files
+COPY frontend/package*.json ./
+COPY frontend/next.config.js* ./
+
+# Install dependencies
+RUN npm ci --prefer-offline --no-audit --no-fund
+
+# ── Stage 2: Builder ────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy dependencies from previous stage
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy source code
+COPY frontend/ ./
+
+# Set public env vars at build time (override via --build-arg)
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ARG NEXT_PUBLIC_APP_NAME="Local AI Platform"
+ARG NEXT_PUBLIC_APP_TAGLINE="Internal AI for Data Intelligence"
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
+ENV NEXT_PUBLIC_APP_TAGLINE=$NEXT_PUBLIC_APP_TAGLINE
+
+# Build the Next.js application
+RUN npm run build
+
+# ── Stage 3: Runtime ───────────────────────────────────────────────────────
+FROM node:20-alpine AS runtime
+
+LABEL maintainer="LocalAI Platform"
+LABEL description="Frontend for Local AI Data Intelligence Platform"
+
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup --system --gid 1000 nodejs && \
+    adduser --system --uid 1000 --ingroup nodejs nextjs
+
+# Copy built assets
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Set runtime env (override at container run time)
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+EXPOSE 3000
+
+USER nextjs
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD wget -q --spider http://localhost:3000/ || exit 1
+
+CMD ["node", "server.js"]

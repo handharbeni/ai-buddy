@@ -1,0 +1,49 @@
+# Build artifacts
+node_modules/
+.next/
+dist/
+build/
+__pycache__/
+*.pyc
+*.pyo
+
+# Env files (NEVER commit)
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+!frontend/.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Docker volumes (mounted externally)
+volumes/
+
+# Backup / archive files
+*.bak
+*.tar.gz
+*.zip
+*.rar

@@ -1,0 +1,77 @@
+# syntax=docker/dockerfile:1
+# ─────────────────────────────────────────────────────────────────────────────
+# Backend Dockerfile — Local AI Data Intelligence Platform
+# Supports Oracle, PostgreSQL, MySQL via env vars.
+# Build:  docker build -f Dockerfile.backend -t localai-backend .
+# Run:   docker compose up backend
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Stage 1: Builder ────────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast package installation
+RUN pip install --no-cache-dir uv
+
+# Copy requirements first (for layer caching)
+COPY backend/pyproject.toml backend/uv.lock ./
+
+# Install Python dependencies
+RUN uv pip install --system --no-cache \
+    --resolution=highest \
+    -r pyproject.toml
+
+# ── Stage 2: Runtime ────────────────────────────────────────────────────────
+FROM python:3.11-slim AS runtime
+
+LABEL maintainer="LocalAI Platform"
+LABEL description="Backend API for Local AI Data Intelligence Platform"
+
+WORKDIR /app
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    libaio1 \
+    libcurl4 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for security
+RUN groupadd --gid 1000 appgroup && \
+    useradd --uid 1000 --gid appgroup --shell /bin/bash appuser
+
+# Copy installed Python packages from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application code
+COPY backend/app ./app
+COPY backend/pyproject.toml ./
+
+# Environment defaults (overridable at runtime)
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV USE_MOCK_DB=1          # Set to 0 when real DB credentials are provided
+ENV LLM_BACKEND=ollama
+ENV LLM_BASE_URL=http://host.docker.internal:11434
+ENV LLM_MODEL=local-ai:latest
+ENV QDRANT_URL=http://qdrant:6333
+
+# Expose API port
+EXPOSE 8000
+
+# Switch to non-root user
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run uvicorn (workers=1 for container; override with --workers N in production)
+ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

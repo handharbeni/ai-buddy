@@ -1,0 +1,1 @@
+"""BAPENDA Backend Application."""
