@@ -1,0 +1,292 @@
+# Local AI Data Intelligence Platform - Portainer-Compatible Compose
+#
+# Differences from docker-compose.yml:
+#   - NO "profiles:" directives (Portainer doesn't pass --profile)
+#   - All services included; controlled via ENABLE_* env vars
+#   - VPN/RAG conditionally started via init scripts (graceful no-op)
+#
+# Deploy in Portainer:
+#   1. Stacks → Add Stack
+#   2. Name: ai-buddy
+#   3. Build method: Upload / Web editor / Git
+#   4. Set environment variables below
+#   5. Deploy
+#
+# Required env vars (set in Portainer):
+#   ENABLE_VPN=true|false      # single VPN mode
+#   ENABLE_VPN_MULTI=true|false # multi-VPN mode
+#   ENABLE_RAG=true|false      # RAG service
+#   DB credentials (Oracle/MySQL/PostgreSQL passwords)
+#
+# Optional: VPN/RAG files
+#   Mount volumes via Portainer "Volumes" section:
+#     /host/path/to/vpn:/vpn  (contains *.ovpn + auth_*.txt)
+
+name: localai
+
+# ── Backend service template (used by both backend and backend-vpn) ──
+x-backend-common: &backend-common
+  build:
+    context: .
+    dockerfile: Dockerfile.backend
+  image: localai/backend:latest
+  restart: unless-stopped
+  environment:
+    APP_NAME: ${APP_NAME:-Local AI Platform}
+    APP_SHORT_NAME: ${APP_SHORT_NAME:-LocalAI}
+    APP_TAGLINE: ${APP_TAGLINE:-Internal AI for Data Intelligence}
+    APP_INSTITUTION: ${APP_INSTITUTION:-}
+    APP_DOMAIN: ${APP_DOMAIN:-data}
+    APP_VERSION: ${APP_VERSION:-1.0.0}
+    LLM_BACKEND: ${LLM_BACKEND:-ollama}
+    LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434}
+    LLM_MODEL: ${LLM_MODEL:-local-ai:latest}
+    LLM_TIMEOUT: ${LLM_TIMEOUT:-120}
+    QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+    EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
+    JWT_SECRET: ${JWT_SECRET:-change-me-in-production-please}
+    JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+    JWT_ACCESS_EXPIRE_MIN: ${JWT_ACCESS_EXPIRE_MIN:-15}
+    CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000","http://localhost:3001"]}
+    STORAGE_DB_PATH: ${STORAGE_DB_PATH:-/app/data/app.db}
+    USE_MOCK_DB: ${USE_MOCK_DB:-1}
+    # Oracle
+    ORACLE_BATAMAI_HOST: ${ORACLE_BATAMAI_HOST:-}
+    ORACLE_BATAMAI_PORT: ${ORACLE_BATAMAI_PORT:-1521}
+    ORACLE_BATAMAI_SERVICE: ${ORACLE_BATAMAI_SERVICE:-}
+    ORACLE_BATAMAI_USER: ${ORACLE_BATAMAI_USER:-}
+    ORACLE_BATAMAI_PASSWORD: ${ORACLE_BATAMAI_PASSWORD:-}
+    # PostgreSQL
+    POSTGRES_PRIMARY_HOST: ${POSTGRES_PRIMARY_HOST:-}
+    POSTGRES_PRIMARY_PORT: ${POSTGRES_PRIMARY_PORT:-5432}
+    POSTGRES_PRIMARY_DB: ${POSTGRES_PRIMARY_DB:-}
+    POSTGRES_PRIMARY_USER: ${POSTGRES_PRIMARY_USER:-}
+    POSTGRES_PRIMARY_PASSWORD: ${POSTGRES_PRIMARY_PASSWORD:-}
+    # MySQL
+    MYSQL_PRIMARY_HOST: ${MYSQL_PRIMARY_HOST:-}
+    MYSQL_PRIMARY_PORT: ${MYSQL_PRIMARY_PORT:-3306}
+    MYSQL_PRIMARY_DB: ${MYSQL_PRIMARY_DB:-}
+    MYSQL_PRIMARY_USER: ${MYSQL_PRIMARY_USER:-}
+    MYSQL_PRIMARY_PASSWORD: ${MYSQL_PRIMARY_PASSWORD:-}
+    # RAG
+    RAG_BASE_URL: ${RAG_BASE_URL:-http://rag:8002}
+    PYTHONUNBUFFERED: "1"
+  volumes:
+    - app_data:/app/data
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 15s
+
+services:
+  # ════════════════════════════════════════════════════════════════════
+  # CORE SERVICES — always running
+  # ════════════════════════════════════════════════════════════════════
+
+  # ── Backend API (always running, exposed on :8000) ──
+  backend:
+    <<: *backend-common
+    container_name: localai-backend
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      qdrant:
+        condition: service_started
+      ollama:
+        condition: service_started
+      rag:
+        condition: service_started
+        required: false
+    networks:
+      - localai-net
+
+  # ── Frontend (Next.js) ──
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_APP_NAME: ${APP_NAME:-Local AI Platform}
+        NEXT_PUBLIC_APP_TAGLINE: ${APP_TAGLINE:-Internal AI for Data Intelligence}
+    image: localai/frontend:latest
+    container_name: localai-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NODE_ENV: production
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - localai-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── Qdrant vector store ──
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: localai-qdrant
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - localai-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Ollama LLM runtime ──
+  ollama:
+    image: ollama/ollama:latest
+    container_name: localai-ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - localai-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ════════════════════════════════════════════════════════════════════
+  # OPTIONAL SERVICES — controlled by ENABLE_* env vars
+  # ════════════════════════════════════════════════════════════════════
+
+  # ── RAG service (Perda/Pergub/SOP ingestion) ──
+  # Set ENABLE_RAG=true in Portainer to start
+  rag:
+    build:
+      context: ./rag
+      dockerfile: Dockerfile
+      args:
+        EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
+    image: localai/rag:latest
+    container_name: localai-rag
+    restart: "no"
+    # Conditional start: stays down if ENABLE_RAG != "true"
+    # Portainer reads env at deploy time
+    profiles: ["${ENABLE_RAG:-false}"]
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
+      HF_HOME: /app/.cache/hf
+      TRANSFORMERS_CACHE: /app/.cache/hf
+    depends_on:
+      qdrant:
+        condition: service_started
+    volumes:
+      - rag_models:/app/.cache/hf
+    networks:
+      - localai-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
+  # ── Single VPN (one .ovpn file, all DB traffic through one tunnel) ──
+  # Set ENABLE_VPN=true
+  vpn:
+    build:
+      context: ./docker/vpn
+      dockerfile: Dockerfile
+    image: localai/vpn:latest
+    container_name: localai-vpn
+    restart: "no"
+    profiles: ["${ENABLE_VPN:-false}"]
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    volumes:
+      - ./docker/vpn/config.ovpn:/vpn/config.ovpn:ro
+      - ./docker/vpn/auth.txt:/vpn/auth.txt:ro
+    environment:
+      VPN_SUBNETS: ${SINGLE_VPN_SUBNETS:-}
+    networks:
+      - localai-net
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /var/run/openvpn.pid && kill -0 $(cat /var/run/openvpn.pid) || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ── Multi-VPN (per-database tunnel, policy routing) ──
+  # Set ENABLE_VPN_MULTI=true
+  vpn-multi:
+    build:
+      context: ./docker/vpn
+      dockerfile: Dockerfile
+      args:
+        ENTRYPOINT: entrypoint-multi.sh
+    image: localai/vpn-multi:latest
+    container_name: localai-vpn-multi
+    restart: "no"
+    profiles: ["${ENABLE_VPN_MULTI:-false}"]
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    volumes:
+      - ./docker/vpn:/vpn:ro
+    environment:
+      ORACLE_SUBNETS: ${ORACLE_SUBNETS:-}
+      MYSQL_SUBNETS: ${MYSQL_SUBNETS:-}
+      POSTGRES_SUBNETS: ${POSTGRES_SUBNETS:-}
+    networks:
+      - localai-net
+    healthcheck:
+      test: ["CMD-SHELL", "ip link show tun10 2>/dev/null || exit 0"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ── VPN-attached backend (only runs when VPN enabled) ──
+  # Shares network namespace with vpn or vpn-multi
+  backend-vpn:
+    <<: *backend-common
+    container_name: localai-backend-vpn
+    restart: "no"
+    profiles:
+      - "${ENABLE_VPN:-false}"
+      - "${ENABLE_VPN_MULTI:-false}"
+    network_mode: "service:${VPN_SERVICE:-vpn}"
+    depends_on:
+      qdrant:
+        condition: service_started
+      ollama:
+        condition: service_started
+    ports: []  # not exposed; use frontend or reverse proxy
+
+networks:
+  localai-net:
+    driver: bridge
+
+volumes:
+  qdrant_data:
+  ollama_data:
+  app_data:
+  rag_models:
