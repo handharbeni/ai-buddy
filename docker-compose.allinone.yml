@@ -1,18 +1,9 @@
-# All-in-One Container Setup - Local AI Data Intelligence Platform
-# Single container for development and production, includes: Backend, Frontend, Ollama, Qdrant, and all necessary services
-#
-# Use Cases:
-#   - Dev/Test: Start everything with one command for local iteration
-#   - Light production: For environments without Docker Swarm/Kubernetes, one box approach
-#   - CI/Testing: Simplifies integration and unit testing
-#
-# Limitation: All in one increases resource usage and limits independent scaling of each service.
-# Preferred for production: Use docker-compose.yml (multi-service) for better isolation and control.
+# All-in-One Compose for Local AI Platform
+# For development/testing only - not production
 
 name: localai-allinone
 
 services:
-  # Main application container - runs backend + frontend + LLM + Vector DB + VPN sidecar - controlled via supervisord
   app:
     build:
       context: .
@@ -29,19 +20,25 @@ services:
       - app_data:/app/data
       - ollama_data:/root/.ollama
       - qdrant_data:/opt/qdrant/data
-      - vpn_data:/vpn
+      - ./frontend:/app/frontend:ro
+      - ./backend:/app/backend:ro
+      - ./rag:/app/rag:ro
+      - ./Modelfile.bapenda:/app/Modelfile.bapenda:ro
     environment:
-      # LLM Backend - can be ollama or vllm; defaults to ollama for compatibility
+      APP_NAME: ${APP_NAME:-Local AI Platform}
+      APP_TAGLINE: ${APP_TAGLINE:-Internal AI for Data Intelligence}
+      APP_INSTITUTION: ${APP_INSTITUTION:-}
+      APP_DOMAIN: ${APP_DOMAIN:-data}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+
       LLM_BACKEND: ${LLM_BACKEND:-ollama}
       LLM_BASE_URL: ${LLM_BASE_URL:-http://127.0.0.1:11434}
       LLM_MODEL: ${LLM_MODEL:-local-ai:latest}
       LLM_TIMEOUT: ${LLM_TIMEOUT:-120}
 
-      # Qdrant service connection - used by RAG
       QDRANT_URL: ${QDRANT_URL:-http://127.0.0.1:6333}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
 
-      # Security & Configuration
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production-please}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       JWT_ACCESS_EXPIRE_MIN: ${JWT_ACCESS_EXPIRE_MIN:-15}
@@ -49,18 +46,11 @@ services:
       STORAGE_DB_PATH: ${STORAGE_DB_PATH:-/app/data/app.db}
       USE_MOCK_DB: ${USE_MOCK_DB:-1}
 
-      # Database connection strings - set any/all of ORACLE, MYSQL, POSTGRESQL, or keep empty for mock DB
       ORACLE_BATAMAI_HOST: ${ORACLE_BATAMAI_HOST:-}
       ORACLE_BATAMAI_PORT: ${ORACLE_BATAMAI_PORT:-1521}
       ORACLE_BATAMAI_SERVICE: ${ORACLE_BATAMAI_SERVICE:-}
       ORACLE_BATAMAI_USER: ${ORACLE_BATAMAI_USER:-}
       ORACLE_BATAMAI_PASSWORD: ${ORACLE_BATAMAI_PASSWORD:-}
-
-      POSTGRES_PRIMARY_HOST: ${POSTGRES_PRIMARY_HOST:-}
-      POSTGRES_PRIMARY_PORT: ${POSTGRES_PRIMARY_PORT:-5432}
-      POSTGRES_PRIMARY_DB: ${POSTGRES_PRIMARY_DB:-}
-      POSTGRES_PRIMARY_USER: ${POSTGRES_PRIMARY_USER:-}
-      POSTGRES_PRIMARY_PASSWORD: ${POSTGRES_PRIMARY_PASSWORD:-}
 
       MYSQL_PRIMARY_HOST: ${MYSQL_PRIMARY_HOST:-}
       MYSQL_PRIMARY_PORT: ${MYSQL_PRIMARY_PORT:-3306}
@@ -68,22 +58,18 @@ services:
       MYSQL_PRIMARY_USER: ${MYSQL_PRIMARY_USER:-}
       MYSQL_PRIMARY_PASSWORD: ${MYSQL_PRIMARY_PASSWORD:-}
 
-      # App & Branding - fully configurable via env (project-agnostic)
-      APP_NAME: ${APP_NAME:-Local AI Platform}
-      APP_SHORT_NAME: ${APP_SHORT_NAME:-LocalAI}
-      APP_TAGLINE: ${APP_TAGLINE:-Internal AI for Data Intelligence}
-      APP_INSTITUTION: ${APP_INSTITUTION:-}
-      APP_DOMAIN: ${APP_DOMAIN:-data}
-      APP_VERSION: ${APP_VERSION:-1.0.0}
+      POSTGRES_PRIMARY_HOST: ${POSTGRES_PRIMARY_HOST:-}
+      POSTGRES_PRIMARY_PORT: ${POSTGRES_PRIMARY_PORT:-5432}
+      POSTGRES_PRIMARY_DB: ${POSTGRES_PRIMARY_DB:-}
+      POSTGRES_PRIMARY_USER: ${POSTGRES_PRIMARY_USER:-}
+      POSTGRES_PRIMARY_PASSWORD: ${POSTGRES_PRIMARY_PASSWORD:-}
 
-      # Networking for VPN sidecar and routing
       VPN_SUBNETS: ${VPN_SUBNETS:-10.11.0.0/16}
       ORACLE_SUBNETS: ${ORACLE_SUBNETS:-}
       MYSQL_SUBNETS: ${MYSQL_SUBNETS:-}
       POSTGRES_SUBNETS: ${POSTGRES_SUBNETS:-}
       SINGLE_VPN_SUBNETS: ${SINGLE_VPN_SUBNETS:-}
 
-      # Misc
       DEBUG: ${DEBUG:-false}
       FEATURE_RAG_ENABLED: ${FEATURE_RAG_ENABLED:-true}
     healthcheck:
@@ -98,9 +84,7 @@ services:
           memory: 8G
           cpus: "2.0"
 
-# Persistent volume for all container data
 volumes:
   app_data:
   ollama_data:
   qdrant_data:
-  vpn_data:

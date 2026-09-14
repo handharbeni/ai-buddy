@@ -1,6 +1,6 @@
-# All-in-One Image — Local AI Data Intelligence Platform
-# Single container: Backend + Ollama + Qdrant + Frontend (dev mode)
-# NOT for production (use separate services in prod)
+# All-in-One Image - Local AI Data Intelligence Platform
+# Single container: Backend + Frontend + Ollama + Qdrant + VPN (optional)
+# For development and testing only - NOT for production
 
 FROM ubuntu:22.04
 
@@ -37,13 +37,12 @@ ENV OLLAMA_HOST=127.0.0.1
 ENV OLLAMA_PORT=11434
 
 # ── Qdrant binary ──────────────────────────────────────
-RUN curl -fsSL https://qdrant.github.io/qdrant-docker/run_qdrant.sh | bash -s -- --no-run
-# (installs to /opt/qdrant, binary at /opt/qdrant/qdrant)
-# Fallback: pull minimal qdrant if script fails
-RUN test -f /opt/qdrant/qdrant || \
-    (curl -fsSL https://github.com/qdrant/qdrant/releases/download/v1.7.4/qdrant-v1.7.4-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /opt/ && \
-     mv /opt/qdrant-v1.7.4-x86_64-unknown-linux-gnu/qdrant /opt/qdrant/qdrant && \
-     chmod +x /opt/qdrant/qdrant)
+# Install Qdrant via direct download (no external script dependency)
+RUN wget -q https://github.com/qdrant/qdrant/releases/download/v1.7.4/qdrant-v1.7.4-x86_64-unknown-linux-musl.tar.gz -O /tmp/qdrant.tar.gz && \
+    mkdir -p /opt/qdrant && \
+    tar -xzf /tmp/qdrant.tar.gz -C /opt/qdrant --strip-components=1 && \
+    chmod +x /opt/qdrant/qdrant && \
+    rm -f /tmp/qdrant.tar.gz
 ENV QDRANT_PATH=/opt/qdrant/qdrant
 ENV QDRANT_STORAGE=/app/data/qdrant
 
