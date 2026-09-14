@@ -1,0 +1,68 @@
+# All-in-One Image — Local AI Data Intelligence Platform
+# Single container: Backend + Ollama + Qdrant + Frontend (dev mode)
+# NOT for production (use separate services in prod)
+
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Jakarta
+
+# ── System deps ────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl wget gnupg2 software-properties-common \
+    python3 python3-pip python3-venv \
+    nodejs npm \
+    openjdk-17-jre-headless \
+    procps netcat-openbsd iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Python env ─────────────────────────────────────────
+WORKDIR /app/backend
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /opt/venv/bin/pip install --no-cache-dir \
+        fastapi uvicorn[standard] \
+        pydantic sqlalchemy httpx \
+        loguru python-multipart \
+        sentence-transformers
+
+# ── Node env ──────────────────────────────────────────
+WORKDIR /app/frontend
+COPY frontend/package.json /app/frontend/package.json
+RUN npm install --silent && npm cache clean --force
+
+# ── Ollama binary ──────────────────────────────────────
+RUN curl -fsSL https://ollama.com/install.sh | sh
+ENV OLLAMA_HOST=127.0.0.1
+ENV OLLAMA_PORT=11434
+
+# ── Qdrant binary ──────────────────────────────────────
+RUN curl -fsSL https://qdrant.github.io/qdrant-docker/run_qdrant.sh | bash -s -- --no-run
+# (installs to /opt/qdrant, binary at /opt/qdrant/qdrant)
+# Fallback: pull minimal qdrant if script fails
+RUN test -f /opt/qdrant/qdrant || \
+    (curl -fsSL https://github.com/qdrant/qdrant/releases/download/v1.7.4/qdrant-v1.7.4-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /opt/ && \
+     mv /opt/qdrant-v1.7.4-x86_64-unknown-linux-gnu/qdrant /opt/qdrant/qdrant && \
+     chmod +x /opt/qdrant/qdrant)
+ENV QDRANT_PATH=/opt/qdrant/qdrant
+ENV QDRANT_STORAGE=/app/data/qdrant
+
+# ── App code ───────────────────────────────────────────
+COPY backend/ /app/backend/
+COPY rag/ /app/rag/ 2>/dev/null || true
+COPY Modelfile.bapenda /app/Modelfile.bapenda
+
+# ── Data dirs ──────────────────────────────────────────
+RUN mkdir -p /app/data/llm /app/data/qdrant /app/data/models && \
+    chown -R root:root /app/data
+
+# ── Supervisor ─────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends supervisor && rm -rf /var/lib/apt/lists/*
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+EXPOSE 3000 8000 11434 6333
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

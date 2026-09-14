@@ -1,0 +1,50 @@
+# All-in-One Docker Compose (single container)
+# Dev/testing only — for production use docker-compose.yml (multi-service)
+#
+# Usage:
+#   docker compose -f docker-compose.allinone.yml up
+#
+# All services run inside ONE container:
+#   - Ollama (LLM)         → http://localhost:11434
+#   - Qdrant (Vector DB)   → http://localhost:6333
+#   - Backend (FastAPI)    → http://localhost:8000
+#   - Frontend (Next.js)   → http://localhost:3000
+
+name: localai-allinone
+
+services:
+  allinone:
+    build:
+      context: .
+      dockerfile: Dockerfile.allinone
+    image: localai/allinone:latest
+    container_name: localai-allinone
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+      - "${API_PORT:-8000}:8000"
+      - "${OLLAMA_PORT:-11434}:11434"
+      - "${QDRANT_PORT:-6333}:6333"
+    volumes:
+      - allinone_data:/app/data
+      # Mount Ollama model for persistence
+      - ollama_data:/app/data/models:ro
+    environment:
+      APP_NAME: ${APP_NAME:-Local AI Platform}
+      APP_TAGLINE: ${APP_TAGLINE:-Internal AI for Data Intelligence}
+      LLM_BACKEND: ollama
+      LLM_BASE_URL: http://127.0.0.1:11434
+      LLM_MODEL: ${LLM_MODEL:-local-ai:latest}
+      QDRANT_URL: http://127.0.0.1:6333
+      STORAGE_DB_PATH: /app/data/app.db
+      USE_MOCK_DB: ${USE_MOCK_DB:-1}
+    # Increase resources — this container does everything
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: "2.0"
+
+volumes:
+  allinone_data:
+  ollama_data:
