@@ -1,19 +1,19 @@
-# All-in-One Docker Compose (single container)
-# Dev/testing only — for production use docker-compose.yml (multi-service)
+# All-in-One Container Setup - Local AI Data Intelligence Platform
+# Single container for development and production, includes: Backend, Frontend, Ollama, Qdrant, and all necessary services
 #
-# Usage:
-#   docker compose -f docker-compose.allinone.yml up
+# Use Cases:
+#   - Dev/Test: Start everything with one command for local iteration
+#   - Light production: For environments without Docker Swarm/Kubernetes, one box approach
+#   - CI/Testing: Simplifies integration and unit testing
 #
-# All services run inside ONE container:
-#   - Ollama (LLM)         → http://localhost:11434
-#   - Qdrant (Vector DB)   → http://localhost:6333
-#   - Backend (FastAPI)    → http://localhost:8000
-#   - Frontend (Next.js)   → http://localhost:3000
+# Limitation: All in one increases resource usage and limits independent scaling of each service.
+# Preferred for production: Use docker-compose.yml (multi-service) for better isolation and control.
 
 name: localai-allinone
 
 services:
-  allinone:
+  # Main application container - runs backend + frontend + LLM + Vector DB + VPN sidecar - controlled via supervisord
+  app:
     build:
       context: .
       dockerfile: Dockerfile.allinone
@@ -26,25 +26,81 @@ services:
       - "${OLLAMA_PORT:-11434}:11434"
       - "${QDRANT_PORT:-6333}:6333"
     volumes:
-      - allinone_data:/app/data
-      # Mount Ollama model for persistence
-      - ollama_data:/app/data/models:ro
+      - app_data:/app/data
+      - ollama_data:/root/.ollama
+      - qdrant_data:/opt/qdrant/data
+      - vpn_data:/vpn
     environment:
-      APP_NAME: ${APP_NAME:-Local AI Platform}
-      APP_TAGLINE: ${APP_TAGLINE:-Internal AI for Data Intelligence}
-      LLM_BACKEND: ollama
-      LLM_BASE_URL: http://127.0.0.1:11434
+      # LLM Backend - can be ollama or vllm; defaults to ollama for compatibility
+      LLM_BACKEND: ${LLM_BACKEND:-ollama}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://127.0.0.1:11434}
       LLM_MODEL: ${LLM_MODEL:-local-ai:latest}
-      QDRANT_URL: http://127.0.0.1:6333
-      STORAGE_DB_PATH: /app/data/app.db
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-120}
+
+      # Qdrant service connection - used by RAG
+      QDRANT_URL: ${QDRANT_URL:-http://127.0.0.1:6333}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
+
+      # Security & Configuration
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-please}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_ACCESS_EXPIRE_MIN: ${JWT_ACCESS_EXPIRE_MIN:-15}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000","http://localhost:3001"]}
+      STORAGE_DB_PATH: ${STORAGE_DB_PATH:-/app/data/app.db}
       USE_MOCK_DB: ${USE_MOCK_DB:-1}
-    # Increase resources — this container does everything
+
+      # Database connection strings - set any/all of ORACLE, MYSQL, POSTGRESQL, or keep empty for mock DB
+      ORACLE_BATAMAI_HOST: ${ORACLE_BATAMAI_HOST:-}
+      ORACLE_BATAMAI_PORT: ${ORACLE_BATAMAI_PORT:-1521}
+      ORACLE_BATAMAI_SERVICE: ${ORACLE_BATAMAI_SERVICE:-}
+      ORACLE_BATAMAI_USER: ${ORACLE_BATAMAI_USER:-}
+      ORACLE_BATAMAI_PASSWORD: ${ORACLE_BATAMAI_PASSWORD:-}
+
+      POSTGRES_PRIMARY_HOST: ${POSTGRES_PRIMARY_HOST:-}
+      POSTGRES_PRIMARY_PORT: ${POSTGRES_PRIMARY_PORT:-5432}
+      POSTGRES_PRIMARY_DB: ${POSTGRES_PRIMARY_DB:-}
+      POSTGRES_PRIMARY_USER: ${POSTGRES_PRIMARY_USER:-}
+      POSTGRES_PRIMARY_PASSWORD: ${POSTGRES_PRIMARY_PASSWORD:-}
+
+      MYSQL_PRIMARY_HOST: ${MYSQL_PRIMARY_HOST:-}
+      MYSQL_PRIMARY_PORT: ${MYSQL_PRIMARY_PORT:-3306}
+      MYSQL_PRIMARY_DB: ${MYSQL_PRIMARY_DB:-}
+      MYSQL_PRIMARY_USER: ${MYSQL_PRIMARY_USER:-}
+      MYSQL_PRIMARY_PASSWORD: ${MYSQL_PRIMARY_PASSWORD:-}
+
+      # App & Branding - fully configurable via env (project-agnostic)
+      APP_NAME: ${APP_NAME:-Local AI Platform}
+      APP_SHORT_NAME: ${APP_SHORT_NAME:-LocalAI}
+      APP_TAGLINE: ${APP_TAGLINE:-Internal AI for Data Intelligence}
+      APP_INSTITUTION: ${APP_INSTITUTION:-}
+      APP_DOMAIN: ${APP_DOMAIN:-data}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+
+      # Networking for VPN sidecar and routing
+      VPN_SUBNETS: ${VPN_SUBNETS:-10.11.0.0/16}
+      ORACLE_SUBNETS: ${ORACLE_SUBNETS:-}
+      MYSQL_SUBNETS: ${MYSQL_SUBNETS:-}
+      POSTGRES_SUBNETS: ${POSTGRES_SUBNETS:-}
+      SINGLE_VPN_SUBNETS: ${SINGLE_VPN_SUBNETS:-}
+
+      # Misc
+      DEBUG: ${DEBUG:-false}
+      FEATURE_RAG_ENABLED: ${FEATURE_RAG_ENABLED:-true}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     deploy:
       resources:
         limits:
           memory: 8G
           cpus: "2.0"
 
+# Persistent volume for all container data
 volumes:
-  allinone_data:
+  app_data:
   ollama_data:
+  qdrant_data:
+  vpn_data:
