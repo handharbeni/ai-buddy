@@ -1,43 +1,24 @@
-// PM2 Ecosystem Config - Backend (FastAPI + Uvicorn)
-// Python process managed by PM2
-//
-// Usage:
-//   pm2 start ecosystem.backend.config.js
-//   pm2 monit
-//   pm2 save
-//   pm2 startup
-
+// ecosystem.backend.config.js
 module.exports = {
-  apps: [
-    {
-      name: 'bapenda-backend',
-      script: '/opt/venv/bin/uvicorn',
-      args: 'app.main:app --host 0.0.0.0 --port 8000 --workers 2',
-      cwd: '/app/backend',
-      exec_mode: 'cluster',
-      instances: 'max',
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '1G',
-      env: {
-        NODE_ENV: 'production',
-        LLM_BACKEND: 'ollama',
-        LLM_BASE_URL: 'http://127.0.0.1:11434',
-        LLM_MODEL: 'bapenda-ai:latest',
-        QDRANT_URL: 'http://127.0.0.1:6333',
-        JWT_SECRET: 'change-me-in-production-please',
-        JWT_ALGORITHM: 'HS256',
-        JWT_ACCESS_EXPIRE_MIN: '15',
-        STORAGE_DB_PATH: '/app/data/app.db',
-        USE_MOCK_DB: '1',
-        APP_NAME: 'Local AI Platform',
-        APP_TAGLINE: 'Internal AI for Data Intelligence'
-      },
-      error_file: '/app/logs/backend-err.log',
-      out_file: '/app/logs/backend-out.log',
-      log_file: '/app/logs/backend-combined.log',
-      log_date_format: 'YYYY-MM-DD HH:mm Z',
-      pid_file: '/app/logs/backend.pid'
+  apps: [{
+    name: 'bapenda-backend',
+    script: 'C:/Users/Administrator/Documents/DBI-DB/start-backend.bat',
+    args: '',
+    cwd: 'C:/Users/Administrator/Documents/DBI-DB', // Root direktori untuk Windows
+    interpreter: 'cmd',
+    exec_mode: 'fork',
+    max_memory_restart: '4G',
+    error_file: 'C:/Users/Administrator/Documents/DBI-DB/logs/backend-err.log',
+    out_file: 'C:/Users/Administrator/Documents/DBI-DB/logs/backend-out.log',
+    log_file: 'C:/Users/Administrator/Documents/DBI-DB/logs/backend-combined.log',
+    log_date_format: 'YYYY-MM-DD HH:mm Z',
+    pid_file: 'C:/Users/Administrator/Documents/DBI-DB/logs/backend.pid',
+    env: {
+      NODE_ENV: 'production', // Contoh: untuk backend jika perlu
+      PORT: 8000, // Port backend FastAPI
+      LLM_SERVER_URL: 'http://localhost:11434', // Contoh: URL LLM Server
+      LLM_MODEL_NAME: 'your-llm-model', // Contoh: Nama model LLM
+      // Tambahkan variabel lingkungan backend lainnya di sini
     }
-  ]
+  }]
 };

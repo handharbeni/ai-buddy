@@ -1,35 +1,23 @@
-// PM2 Ecosystem Config - Frontend (Next.js)
-// Node.js process managed by PM2
-//
-// Usage:
-//   pm2 start ecosystem.frontend.config.js
-//   pm2 monit
-//   pm2 save
-
+// ecosystem.frontend.config.js
 module.exports = {
-  apps: [
-    {
-      name: 'bapenda-frontend',
-      script: 'npm',
-      args: 'run start --prefix /app/frontend',
-      cwd: '/app/frontend',
-      exec_mode: 'cluster',
-      instances: 'max',
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '512M',
-      env: {
-        NODE_ENV: 'production',
-        NEXT_PUBLIC_API_URL: 'http://localhost:8000',
-        NEXT_PUBLIC_APP_NAME: 'Local AI Platform',
-        NEXT_PUBLIC_APP_TAGLINE: 'Internal AI for Data Intelligence',
-        PORT: 3000
-      },
-      error_file: '/app/logs/frontend-err.log',
-      out_file: '/app/logs/frontend-out.log',
-      log_file: '/app/logs/frontend-combined.log',
-      log_date_format: 'YYYY-MM-DD HH:mm Z',
-      pid_file: '/app/logs/frontend.pid'
+  apps: [{
+    name: 'bapenda-frontend',
+    script: 'C:/Users/Administrator/Documents/DBI-DB/start-frontend.bat',
+    args: '',
+    cwd: 'C:/Users/Administrator/Documents/DBI-DB', // Root direktori untuk Windows
+    interpreter: 'cmd',
+    exec_mode: 'fork',
+    max_memory_restart: '4G',
+    error_file: 'C:/Users/Administrator/Documents/DBI-DB/logs/frontend-err.log',
+    out_file: 'C:/Users/Administrator/Documents/DBI-DB/logs/frontend-out.log',
+    log_file: 'C:/Users/Administrator/Documents/DBI-DB/logs/frontend-combined.log',
+    log_date_format: 'YYYY-MM-DD HH:mm Z',
+    pid_file: 'C:/Users/Administrator/Documents/DBI-DB/logs/frontend.pid',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 3000, // Next.js default port
+      NEXT_PUBLIC_BACKEND_API_URL: 'http://localhost:8000', // Contoh frontend specific env vars
+      NEXT_PUBLIC_LLM_API_URL: 'http://localhost:11434' // Contoh jika frontend perlu akses LLM (jarang)
     }
-  ]
+  }]
 };

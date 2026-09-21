@@ -1,0 +1,2 @@
+@echo off
+"C:\Users\Administrator\Documents\DBI-DB\backend\venv\Scripts\python.exe" -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 > "C:\Users\Administrator\Documents\DBI-DB\logs\backend-direct-output.log" 2>&1
