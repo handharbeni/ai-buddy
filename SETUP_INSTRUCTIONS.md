@@ -1,163 +1,273 @@
-# BAPENDA Platform - Setup Instructions
+# Setup Instructions — Connecting to Real Database
 
-## ✅ Current Status Verified
+Step-by-step guide to connect the platform to real databases (with or without VPN).
 
-1. **Ollama LLM**: Running with custom model `bapenda-ai:latest` (Qwen3 14.8B) ✅
-   - URL: http://localhost:11434
-   - Available models: `bapenda-ai:latest`, `qwen3:14b`
+For full deployment options, see [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md).
 
-2. **Database Authentication**: Configured for multi-database, multi-type support ✅
-   - File: `backend/app/config.py`
-   - Supports: Oracle, PostgreSQL, MySQL
-   - Each type can have multiple named connections (e.g., 3 Oracle DBs)
-   - Auth via environment variables (secrets management ready)
+---
 
-3. **Backend API**: Ready to start (FastAPI) ✅
-   - File: `backend/app/main.py`
-   - Health endpoint: `/health`
-   - API docs: `/docs`
+## Prerequisites Checklist
 
-4. **Frontend**: Code ready (Next.js 14) ✅
-   - File: `frontend/`
-   - Requires: `npm install` then `npm run dev`
+Before starting, ensure you have:
 
-## 🔧 Database Authentication Setup
+- [ ] **Database credentials** — host, port, service/SID, username, password (read-only user)
+- [ ] **VPN files** (if DB is on private network) — `.ovpn` config + auth credentials
+- [ ] **Network access** — either direct or via VPN tunnel
+- [ ] `.env` file created (see step 1)
 
-**Multiple authentications per database type: YES**
+---
 
-Example configuration in `config.py`:
-
-```python
-# Oracle - 3 different databases
-ORACLE_CONNECTIONS = {
-    "primary": {
-        "host": "oracle-prod-1.bapenda.go.id",
-        "service_name": "BAPROD",
-        "user": "AI_READONLY_PRIMARY",
-        "password_env": "ORACLE_PRIMARY_PASSWORD",  # Set in .env or system
-    },
-    "dr_site": {
-        "host": "oracle-dr.bapenda.go.id",
-        "service_name": "BADRP",
-        "user": "AI_READONLY_DR",
-        "password_env": "ORACLE_DR_PASSWORD",
-    },
-    "staging": {
-        "host": "oracle-stg.bapenda.go.id",
-        "service_name": "BASTG",
-        "user": "AI_READONLY_STG",
-        "password_env": "ORACLE_STG_PASSWORD",
-    },
-}
-
-# PostgreSQL - Primary and replica
-POSTGRESQL_CONNECTIONS = {
-    "primary": { ... },
-    "replica": { ... },
-}
-
-# MySQL - Single or multiple
-MYSQL_CONNECTIONS = {
-    "region_master": { ... },
-    "warehouse": { ... },
-}
-```
-
-**To use:**
-1. Set environment variables for each `*_password_env`
-2. The `DatabaseRouter` in MCP tools will select the appropriate connection based on:
-   - Tool configuration (each tool specifies which connection to use)
-   - User scope/role (RBAC filtering applied at query level)
-
-## 🚀 Starting the Services
-
-### Option 1: Using Batch Files (Windows)
-1. **Backend**: Double-click `start_backend.bat` or run:
-   ```cmd
-   C:\Users\Administrator\Documents\DBI-DB\start_backend.bat
-   ```
-   - Backend API: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
-
-2. **Frontend**: Double-click `start_frontend.bat` or run:
-   ```cmd
-   C:\Users\Administrator\Documents\DBI-DB\start_frontend.bat
-   ```
-   - Frontend UI: http://localhost:3000
-
-### Option 2: Manual Start
-```cmd
-# Backend (from backend\ directory)
-C:\Users\Administrator\AppData\Local\hermes\hermes-agent\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Frontend (from frontend\ directory)
-npm run dev
-```
-
-## 📋 Expected URLs Once Running
-
-| Service | URL | Description |
-|---------|-----|-------------|
-| **Backend API** | http://localhost:8000 | FastAPI application |
-| **API Documentation** | http://localhost:8000/docs | Interactive Swagger UI |
-| **Alternative Docs** | http://localhost:8000/redoc | ReDoc documentation |
-| **Frontend Dashboard** | http://localhost:3000 | Next.js chat interface |
-| **Ollama LLM** | http://localhost:11434 | LLM service (already running) |
-| **Health Check** | http://localhost:8000/health | Backend health endpoint |
-
-## 🔑 Environment Variables Needed
-
-Create a `.env` file in the project root (`C:\Users\Administrator\Documents\DBI-DB\.env`):
-
-```env
-# Database Passwords (example)
-ORACLE_PRIMARY_PASSWORD=your_oracle_primary_password
-ORACLE_DR_PASSWORD=your_oracle_dr_password
-ORACLE_STG_PASSWORD=your_oracle_stg_password
-PG_PASSWORD
-PG_PASSWORD=your_postgresql_password
-MYSQL_PASSWORD=your_mysql_password
-
-# JWT Secret (generate a strong secret)
-JWT_SECRET_KEY=your_jwt_secret_key_here_min_32_chars
-
-# Optional: OIDC
-# OIDC_ISSUER=https://your-oidc-provider.com
-# OIDC_CLIENT_ID=your-client-id
-# OIDC_CLIENT_SECRET_ENV=OIDC_CLIENT_SECRET
-```
-
-## 🧪 Testing After Startup
-
-Once both services are running:
+## Step 1: Create `.env`
 
 ```bash
-# Test backend health
-curl http://localhost:8000/health
-
-# Test API docs
-curl http://localhost:8000/docs
-
-# Test a sample query (requires auth token)
-# First login to get token, then:
-curl -X POST "http://localhost:8000/api/v1/query" \
-  -H "Authorization: Bearer <your_jwt_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Berapa realizasi pajak PBB bulan ini?"}'
-
-# Test Ollama directly
-curl http://localhost:11434/api/tags
+cp .env.example .env
 ```
 
-## 📝 Notes
+---
 
-- **Security**: All database connections are READ-ONLY (`AI_READONLY` user)
-- **Scope**: Queries automatically filtered by user's NPWP, KPP, Kanwil via RBAC
-- **LLM**: Uses your custom `bapenda-ai:latest` model via Ollama
-- **Frontend**: Will auto-connect to backend at `http://localhost:8000`
+## Step 2: Configure Database
 
-**Please confirm:**
-1. Do you want me to help you start the services now?
-2. Or would you prefer to run the batch files yourself?
+### Option A: Oracle
 
-Once services are running, I'll provide the exact URLs to access the dashboard.
+```bash
+# .env
+USE_MOCK_DB=0
+ORACLE_BATAMAI_HOST=10.11.0.252
+ORACLE_BATAMAI_PORT=1521
+ORACLE_BATAMAI_SERVICE=simpbb
+ORACLE_BATAMAI_USER=ai_readonly
+ORACLE_BATAMAI_PASSWORD=your_real_password
+ORACLE_BATAMAI_READONLY=true
+```
+
+**Database-side grants (DBA must run):**
+```sql
+CREATE USER ai_readonly IDENTIFIED BY "your_real_password";
+GRANT CONNECT TO ai_readonly;
+GRANT SELECT ANY DICTIONARY TO ai_readonly;
+GRANT SELECT ON schema.view_name TO ai_readonly;
+```
+
+### Option B: PostgreSQL
+
+```bash
+# .env
+USE_MOCK_DB=0
+POSTGRES_PRIMARY_HOST=pg.internal.example.com
+POSTGRES_PRIMARY_PORT=5432
+POSTGRES_PRIMARY_DB=production_db
+POSTGRES_PRIMARY_USER=ai_readonly
+POSTGRES_PRIMARY_PASSWORD=your_real_password
+```
+
+**Database-side grants:**
+```sql
+CREATE USER ai_readonly WITH PASSWORD 'your_real_password';
+GRANT CONNECT ON DATABASE production_db TO ai_readonly;
+GRANT USAGE ON SCHEMA public TO ai_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO ai_readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ai_readonly;
+```
+
+### Option C: MySQL
+
+```bash
+# .env
+USE_MOCK_DB=0
+MYSQL_PRIMARY_HOST=mysql.internal.example.com
+MYSQL_PRIMARY_PORT=3306
+MYSQL_PRIMARY_DB=analytics_db
+MYSQL_PRIMARY_USER=ai_readonly
+MYSQL_PRIMARY_PASSWORD=your_real_password
+```
+
+**Database-side grants:**
+```sql
+CREATE USER 'ai_readonly'@'%' IDENTIFIED BY 'your_real_password';
+GRANT SELECT ON analytics_db.* TO 'ai_readonly'@'%';
+FLUSH PRIVILEGES;
+```
+
+### Multiple Databases
+
+Add more by changing `<NAME>`:
+```bash
+ORACLE_SECONDARY_HOST=10.11.1.100
+ORACLE_SECONDARY_PORT=1521
+ORACLE_SECONDARY_SERVICE=orcl
+ORACLE_SECONDARY_USER=ai_readonly
+ORACLE_SECONDARY_PASSWORD=pass2
+
+POSTGRES_ANALYTICS_HOST=pg-analytics.internal.com
+POSTGRES_ANALYTICS_PORT=5432
+POSTGRES_ANALYTICS_DB=analytics
+POSTGRES_ANALYTICS_USER=reader
+POSTGRES_ANALYTICS_PASSWORD=pass3
+```
+
+---
+
+## Step 3: Configure VPN (if needed)
+
+Skip if DB is directly reachable from your network.
+
+### Single VPN (one database behind VPN)
+
+```bash
+# 1. Place files
+cp /path/to/your-config.ovpn docker/vpn/config.ovpn
+printf 'vpn_username\nvpn_password' > docker/vpn/auth.txt
+chmod 600 docker/vpn/auth.txt
+
+# 2. .env
+SINGLE_VPN_SUBNETS=10.11.0.0/16
+```
+
+### Multi-VPN (multiple databases, different networks)
+
+```bash
+# 1. Place files — one .ovpn per database network
+cp /path/to/oracle.ovpn docker/vpn/oracle.ovpn
+printf 'oracle_user\noracle_pass' > docker/vpn/auth_oracle.txt
+
+cp /path/to/mysql.ovpn docker/vpn/mysql.ovpn
+printf 'mysql_user\nmysql_pass' > docker/vpn/auth_mysql.txt
+
+# 2. .env — map subnets to tunnels
+ORACLE_SUBNETS=10.11.0.0/16
+MYSQL_SUBNETS=192.168.50.0/24
+```
+
+File naming: `<basename>.ovpn` → `auth_<basename>.txt` (fallback: `auth.txt`)
+
+---
+
+## Step 4: Generate JWT Secret
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+
+# Paste into .env
+JWT_SECRET=<your_generated_secret>
+```
+
+---
+
+## Step 5: Start Services
+
+### Without VPN (direct DB access)
+```bash
+docker compose up -d
+```
+
+### With VPN
+```bash
+# Single VPN
+docker compose --profile vpn up -d
+
+# Multi-VPN
+docker compose --profile vpn-multi up -d
+```
+
+---
+
+## Step 6: Verify Connection
+
+### 6.1 Check backend starts without errors
+```bash
+docker compose logs backend | grep -i "oracle\|postgresql\|mysql\|mock"
+```
+
+Expected (real DB):
+```
+Oracle adapter: batamai (10.11.0.252)
+```
+
+If you see `using mock` — credentials missing or connection failed.
+
+### 6.2 Test health endpoint
+```bash
+curl http://localhost:8000/health
+```
+
+### 6.3 Test database connectivity
+```bash
+# Login first
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# Query (will use real DB if configured)
+curl -X POST http://localhost:8000/api/v1/query \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"SELECT 1 FROM dual"}'
+```
+
+### 6.4 Check adapter logs
+```bash
+docker compose logs backend | grep -E "(adapter|connected|pool|error)"
+```
+
+---
+
+## Step 7: VPN Verification (if applicable)
+
+```bash
+# Check tunnel is up
+docker compose exec backend-vpn ip link show | grep tun
+
+# Test reachability to DB host
+docker compose exec backend-vpn sh -c "cat < /dev/tcp/10.11.0.252/1521"
+```
+
+---
+
+## Troubleshooting
+
+### Backend shows "mock" for all databases
+- Check `USE_MOCK_DB=0` in `.env`
+- Check DB credentials are filled (not empty)
+- Check logs for adapter errors
+
+### Connection timeout
+- VPN tunnel not up — check `docker compose logs vpn`
+- Wrong subnet — verify `*_SUBNETS` matches DB host range
+- Firewall blocking — verify port is open
+
+### Password with special characters
+URL-encode special characters in `.env`:
+```bash
+POSTGRES_PRIMARY_PASSWORD=p%40ssw0rd%21
+```
+
+---
+
+## Full `.env` Example (Oracle + VPN)
+
+```bash
+# Branding
+APP_NAME=BAPENDA AI Platform
+APP_INSTITUTION=BAPENDA Batam
+APP_DOMAIN=tax
+
+# LLM
+LLM_BACKEND=ollama
+LLM_BASE_URL=http://localhost:11434
+LLM_MODEL=bapenda-ai:latest
+
+# Database
+USE_MOCK_DB=0
+ORACLE_BATAMAI_HOST=10.11.0.252
+ORACLE_BATAMAI_PORT=1521
+ORACLE_BATAMAI_SERVICE=simpbb
+ORACLE_BATAMAI_USER=ai_readonly
+ORACLE_BATAMAI_PASSWORD=your_real_password
+ORACLE_BATAMAI_READONLY=true
+
+# Security
+JWT_SECRET=<64-char-random-string>
+
+# VPN
+SINGLE_VPN_SUBNETS=10.11.0.0/16
+```
