@@ -9,29 +9,28 @@ from .base import DBAdapter, QueryResult, ScopeFilter
 class PostgreSQLAdapter(DBAdapter):
     """PostgreSQL database adapter using asyncpg."""
 
-    def __init__(self, dsn: str, username: str = "AI_READONLY", password: str = ""):
-        self.dsn = dsn
+    def __init__(self, dsn: str = "", username: str = "AI_READONLY", password: str = "", host: str = "", port: int = 5432):
         self.username = username
         self.password = password
         self.pool = None
         self.initialized = False
+        # Build DSN from components if host provided, else use raw dsn
+        if host:
+            db = dsn if dsn else "app_db"
+            self.conn_str = f"postgresql://{username}:{password}@{host}:{port}/{db}"
+        elif "://" in dsn:
+            self.conn_str = dsn
+        else:
+            self.conn_str = f"postgresql://{username}:{password}@{dsn}"
 
     async def _initialize_pool(self) -> None:
         """Initialize the PostgreSQL connection pool."""
         if not self.initialized:
-            # Build full DSN with credentials
-            if "://" in self.dsn:
-                # Already a full DSN
-                conn_str = self.dsn
-            else:
-                # Build from components
-                conn_str = f"postgresql://{self.username}:{self.password}@{self.dsn}"
-            
             self.pool = await asyncpg.create_pool(
-                dsn=conn_str,
+                dsn=self.conn_str,
                 min_size=2,
                 max_size=10,
-                command_timeout=1800,  # 30 minutes
+                command_timeout=1800,
                 max_queries=50000,
                 max_inactive_connection_lifetime=300,
             )

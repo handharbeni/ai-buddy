@@ -9,26 +9,32 @@ from .base import DBAdapter, QueryResult, ScopeFilter
 class MySQLAdapter(DBAdapter):
     """MySQL database adapter using aiomysql."""
 
-    def __init__(self, dsn: str, username: str = "AI_READONLY", password: str = ""):
-        self.dsn = dsn
+    def __init__(self, dsn: str = "", username: str = "AI_READONLY", password: str = "", host: str = "", port: int = 3306):
         self.username = username
         self.password = password
         self.pool = None
         self.initialized = False
+        # Parse host/port from components or DSN
+        if host:
+            self._host = host
+            self._port = port
+            self._db = dsn if dsn else None
+        else:
+            import urllib.parse
+            parsed = urllib.parse.urlparse(dsn)
+            self._host = parsed.hostname or "localhost"
+            self._port = parsed.port or 3306
+            self._db = parsed.path.lstrip("/") if parsed.path else None
 
     async def _initialize_pool(self) -> None:
         """Initialize the MySQL connection pool."""
         if not self.initialized:
-            # Parse DSN: mysql://user:pass@host:port/db
-            import urllib.parse
-            parsed = urllib.parse.urlparse(self.dsn)
-            
             self.pool = await aiomysql.create_pool(
-                host=parsed.hostname or "localhost",
-                port=parsed.port or 3306,
+                host=self._host,
+                port=self._port,
                 user=self.username,
                 password=self.password,
-                db=parsed.path.lstrip("/") if parsed.path else None,
+                db=self._db,
                 minsize=2,
                 maxsize=10,
                 autocommit=True,
